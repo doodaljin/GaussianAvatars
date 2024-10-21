@@ -60,6 +60,16 @@ class CameraDataset(torch.utils.data.Dataset):
                 image *= gt_alpha_mask
             
             camera.original_image = image.clamp(0.0, 1.0)
+
+            if camera.image_edited_path is not None: 
+                image = Image.open(camera.image_edited_path)
+                im_data = np.array(image.convert("RGBA"))
+                norm_data = im_data / 255.0
+                arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + camera.bg * (1 - norm_data[:, :, 3:4])
+                image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+                resized_image_rgb = PILtoTorch(image, (camera.image_width, camera.image_height))
+                image = resized_image_rgb[:3, ...]
+                camera.edited_image = image.clamp(0.0, 1.0)
             return camera
         elif isinstance(idx, slice):
             return CameraDataset(self.cameras[idx])

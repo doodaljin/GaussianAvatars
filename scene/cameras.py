@@ -34,6 +34,7 @@ class Camera(nn.Module):
         self.image_path = image_path
         self.image_name = image_name
         self.timestep = timestep
+        self.image_edited_path = None
 
         self.zfar = 100.0
         self.znear = 0.01

@@ -28,3 +28,5 @@ networkx==3.1
 pysdf==0.1.9
 git+https://github.com/NVlabs/tiny-cuda-nn/@212104156403bd87616c1a4f73a1c5f2c2e172a9#subdirectory=bindings/torch
 ninja
+kornia
+huggingface-hub==0.25.2

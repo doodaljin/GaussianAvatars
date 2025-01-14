@@ -14,6 +14,9 @@ import math
 import numpy as np
 from typing import NamedTuple
 
+from kornia.core import Tensor, concatenate
+from kornia.core import stack, zeros_like
+
 class BasicPointCloud(NamedTuple):
     points : np.array
     colors : np.array
@@ -154,3 +157,71 @@ def compute_vertex_normals(verts, faces):
     if torch.is_anomaly_enabled():
         assert torch.all(torch.isfinite(v_normals))
     return v_normals
+
+@torch.no_grad()
+def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
+    r"""Get the Fundamental matrix from Projection matrices.
+
+    Args:
+        P1: The projection matrix from first camera with shape :math:`(*, 3, 4)`.
+        P2: The projection matrix from second camera with shape :math:`(*, 3, 4)`.
+
+    Returns:
+         The fundamental matrix with shape :math:`(*, 3, 3)`.
+    """
+    if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
+        raise AssertionError(P1.shape)
+    if not (len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4)):
+        raise AssertionError(P2.shape)
+    if P1.shape[:-2] != P2.shape[:-2]:
+        raise AssertionError
+
+    def vstack(x: Tensor, y: Tensor) -> Tensor:
+        return concatenate([x, y], dim=-2)
+
+    X1 = P1[..., 1:, :]
+    X2 = vstack(P1[..., 2:3, :], P1[..., 0:1, :])
+    X3 = P1[..., :2, :]
+
+    Y1 = P2[..., 1:, :]
+    Y2 = vstack(P2[..., 2:3, :], P2[..., 0:1, :])
+    Y3 = P2[..., :2, :]
+
+    X1Y1, X2Y1, X3Y1 = vstack(X1, Y1), vstack(X2, Y1), vstack(X3, Y1)
+    X1Y2, X2Y2, X3Y2 = vstack(X1, Y2), vstack(X2, Y2), vstack(X3, Y2)
+    X1Y3, X2Y3, X3Y3 = vstack(X1, Y3), vstack(X2, Y3), vstack(X3, Y3)
+
+    F_vec = torch.cat(
+        [
+            X1Y1.det().reshape(-1, 1),
+            X2Y1.det().reshape(-1, 1),
+            X3Y1.det().reshape(-1, 1),
+            X1Y2.det().reshape(-1, 1),
+            X2Y2.det().reshape(-1, 1),
+            X3Y2.det().reshape(-1, 1),
+            X1Y3.det().reshape(-1, 1),
+            X2Y3.det().reshape(-1, 1),
+            X3Y3.det().reshape(-1, 1),
+        ],
+        dim=1,
+    )
+
+    return F_vec.view(*P1.shape[:-2], 3, 3)
+
+def get_fundamental_matrix_with_H(cam1, cam2, current_H, current_W):
+    NDC_2_pixel = torch.tensor([[current_W / 2, 0, current_W / 2], [0, current_H / 2, current_H / 2], [0, 0, 1]]).cuda()
+    # NDC_2_pixel_inversed = torch.inverse(NDC_2_pixel)
+    NDC_2_pixel = NDC_2_pixel.float().cuda()
+    cam_1_tranformation = cam1.full_proj_transform[:, [0,1,3]].T.float().cuda()
+    cam_2_tranformation = cam2.full_proj_transform[:, [0,1,3]].T.float().cuda()
+    cam_1_pixel = NDC_2_pixel@cam_1_tranformation
+    cam_2_pixel = NDC_2_pixel@cam_2_tranformation
+
+    # print(NDC_2_pixel.dtype, cam_1_tranformation.dtype, cam_2_tranformation.dtype, cam_1_pixel.dtype, cam_2_pixel.dtype)
+
+    cam_1_pixel = cam_1_pixel.float()
+    cam_2_pixel = cam_2_pixel.float()
+    # print("cam_1", cam_1_pixel.dtype, cam_1_pixel.shape)
+    # print("cam_2", cam_2_pixel.dtype, cam_2_pixel.shape)
+    # print(NDC_2_pixel@cam_1_tranformation, NDC_2_pixel@cam_2_tranformation)
+    return fundamental_from_projections(cam_1_pixel, cam_2_pixel)

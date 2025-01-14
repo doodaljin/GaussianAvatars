@@ -52,6 +52,8 @@ def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
 
     for id, c in tqdm(enumerate(cam_infos), total=len(cam_infos)):
+        if c.camera_id in [1, 3, 5, 7, 11, 13, 14]: 
+            continue
         if args.select_camera_id != -1 and c.camera_id is not None:
             if c.camera_id != args.select_camera_id:
                 continue

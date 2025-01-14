@@ -25,6 +25,7 @@ from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 from utils.general_utils import PILtoTorch
 from PIL import Image, ImageFile
+from pathlib import Path
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
@@ -34,7 +35,7 @@ class CameraDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.cameras)
-
+                
     def __getitem__(self, idx):
         if isinstance(idx, int):
             # ---- from readCamerasFromTransforms() ----
@@ -75,6 +76,10 @@ class CameraDataset(torch.utils.data.Dataset):
             return CameraDataset(self.cameras[idx])
         else:
             raise TypeError("Invalid argument type")
+    
+    def update_edit(self, idx, edited_path):
+        camera = self.cameras[idx]
+        camera.image_edited_path = edited_path
 
 class Scene:
 
@@ -165,6 +170,47 @@ class Scene:
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
+    
+    def getEditCameras(self, timestep, scale=1.0):
+        temp = self.train_cameras[scale]
+        edit_cameras = [camera for camera in temp if camera.timestep == timestep]
+        return CameraDataset(edit_cameras)
+
+    def getEditCamerasByJson(self, json_file_name, scale=1.0):
+        temp = self.train_cameras[scale]
+        with open(json_file_name) as tf:
+            timesteps = json.load(tf)["timesteps"]
+        edit_cameras = [camera for camera in temp if camera.timestep in timesteps]
+        return CameraDataset(edit_cameras)
+
+    def getEditCamerasContByTimestep(self, timestep, save_path, scale=1.0):
+        temp = self.train_cameras[scale]
+        edit_cameras = [camera for camera in temp if camera.timestep == timestep]
+        for camera in edit_cameras:
+            camera.image_edited_path = Path(save_path) / str(camera.timestep) / (camera.image_name + ".png")
+        return CameraDataset(edit_cameras)
+    def getEditCamerasCont(self, json_file_name, save_path, scale=1.0):
+        temp = self.train_cameras[scale]
+        with open(json_file_name) as tf:
+            timesteps = json.load(tf)["timesteps"]
+        edit_cameras = [camera for camera in temp if camera.timestep in timesteps]
+        for camera in edit_cameras:
+            camera.image_edited_path = Path(save_path) / str(camera.timestep) / (camera.image_name + ".png")
+        return CameraDataset(edit_cameras)
+
+
+    def getSampleCamera(self, timestep, scale=1.0):
+        temp = self.train_cameras[scale]
+        edit_cameras = [camera for camera in temp if (camera.timestep == timestep and "_06" in camera.image_name)]
+        return edit_cameras[0]
+
+    def getSampleCameras(self, scale=1.0):
+        temp = self.train_cameras[scale]
+        temp = [camera for camera in temp if "_06" in camera.image_name]
+        edit_cameras = []
+        for t in range(len(temp)):
+            edit_cameras.append([camera for camera in temp if camera.timestep == t][0])
+        return CameraDataset(edit_cameras)
 
     def getTrainCameras(self, scale=1.0):
         return CameraDataset(self.train_cameras[scale])

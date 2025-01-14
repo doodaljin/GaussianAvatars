@@ -54,6 +54,7 @@ class ModelParams(ParamGroup):
         self._images = "images"
         self._resolution = -1
         self._white_background = False
+        self._prompt = ""
         self.data_device = "cuda"
         self.eval = False
         self.bind_to_mesh = False
@@ -77,11 +78,11 @@ class PipelineParams(ParamGroup):
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
         # 3D Gaussians
-        self.iterations = 600_000  # 30_000 (original)
+        self.iterations = 900_000  # 30_000 (original)
         self.position_lr_init = 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
         self.position_lr_final = 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
         self.position_lr_delay_mult = 0.01
-        self.position_lr_max_steps = 600_000  # 30_000 (original)
+        self.position_lr_max_steps = 900_000  # 30_000 (original)
         self.feature_lr = 0.0025
         self.opacity_lr = 0.05
         self.scaling_lr = 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
@@ -89,8 +90,11 @@ class OptimizationParams(ParamGroup):
         self.densification_interval = 2_000  # 100 (original)
         self.opacity_reset_interval = 60_000 # 3000 (original)
         self.densify_from_iter = 10_000  # 500 (original)
-        self.densify_until_iter = 600_000  # 15_000 (original)
+        self.densify_until_iter = 900_000  # 15_000 (original)
         self.densify_grad_threshold = 0.0002
+        self.edit_iterations = 5000
+        self.edit_densification_interval = 100
+        self.edit_opacity_reset_interval = 5000
         
         # GaussianAvatars
         self.flame_expr_lr = 1e-3

@@ -7,7 +7,9 @@ diff_rasterization/dist
 tensorboard_3d
 screenshots
 data
-debug
+!threestudio/data
+debug*
+edit*
 .threestudio_cache
 job/
 *.png

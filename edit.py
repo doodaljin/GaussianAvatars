@@ -18,7 +18,7 @@ from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 from mesh_renderer import NVDiffRenderer
 import sys
-from scene import Scene, GaussianModel, FlameGaussianModel
+from scene import Scene, GaussianModel, FlameGaussianModel, CameraDataset
 from utils.general_utils import safe_state
 import uuid
 from tqdm import tqdm
@@ -136,15 +136,12 @@ def edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipeline, edit
     os.makedirs(save_path, exist_ok = True)
     images = []
     original_frames = []
-    for i in tqdm(range(len(edit_cameras)//3), desc="Editing progress"):
+    for i in tqdm(range(len(edit_cameras)), desc="Editing progress"):
         view = edit_cameras[i]
         if gaussians.binding != None:
             gaussians.select_mesh_by_timestep(view.timestep)
         rendering = render(view, gaussians, pipeline, background)["render"]
-        gt_image = view.original_image
-        if i == 3:
-            gt_path = Path(save_path) / "original.png"
-            save_image(gt_image, gt_path)
+        gt_image = view.original_image.cuda()
         original_frames.append(gt_image.unsqueeze(0).permute(0, 2, 3, 1))
         images.append(rendering.unsqueeze(0).permute(0, 2, 3, 1))
     images = torch.cat(images, dim=0)
@@ -159,7 +156,7 @@ def edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipeline, edit
         # view.image_edited_path = save_edited_path
         edit_cameras.update_edit(view_index, save_edited_path)
         save_image(edit_image, save_edited_path)
-    print("Done editing timestep ", edit_round, "\n")
+    print("Done editing ", edit_round, "\n")
     return edit_cameras
 
 def find_timesteps_for_editing(scene, threshold = 0.995):
@@ -228,8 +225,8 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     edit_round = 0
-    timestep = 0
-    start_timestep = 850
+    # timestep = 0
+    # start_timestep = 850
     debug = 1
     debug_path = "new_edit"
     debug_counter = 0
@@ -241,6 +238,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     # if start_timestep != 0:
     #     while next(iter_timestep) != start_timestep:
     #         continue
+    nbatch = 9
     for iteration in range(first_iter, opt.iterations + 1):        
         
         iter_start.record()
@@ -265,10 +263,15 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
 
         if iteration % 60000 == 1:
             with torch.no_grad():
-                edit_cameras = scene.getEditCamerasByJson("edit_timesteps.json")
-                edit_cameras = edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipe, edit_round, background, dataset.edit_path)
+                first_cams = scene.getEditCamerasByJsonAndBatch("edit_timesteps.json", nbatch)
+                cameras = []
+                for i in range(nbatch): 
+                    edit_cams = edit_dataset(first_cams[i], guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
+                    cameras = cameras + edit_cams.cameras
+                edit_cameras = CameraDataset(cameras)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
                 iter_camera_train = iter(loader_camera_train)
+                edit_round += 1
 
         try:
             viewpoint_cam = next(iter_camera_train)
@@ -372,7 +375,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
             gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
             gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-            if iteration % opt.edit_densification_interval == 0:
+            if iteration % opt.densification_interval == 0:
                 size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                 gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                 
@@ -387,7 +390,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
             if (iteration in checkpoint_iterations):
                 print("[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-            if (iteration % 1000 == 0):
+            if (iteration % 10000 == 0):
                 debug = 1
 
 
@@ -501,7 +504,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--interval", type=int, default=5000, help="A shared iteration interval for test and saving results and checkpoints.")
+    parser.add_argument("--interval", type=int, default=10000, help="A shared iteration interval for test and saving results and checkpoints.")
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")

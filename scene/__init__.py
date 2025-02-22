@@ -176,7 +176,7 @@ class Scene:
         edit_cameras = [camera for camera in temp if camera.timestep == timestep]
         return CameraDataset(edit_cameras)
 
-    def getEditCamerasByBatch(self, nbatch, batch_id, scale=1.0):
+    def getEditCamerasByBatch(self, nbatch, batch_id):
         edit_cameras = self.edit_cameras
         len_cams = len(edit_cameras)
         batch_size = len_cams//nbatch
@@ -184,7 +184,7 @@ class Scene:
         return CameraDataset(res)
 
     def setupEditCameras(self, json_file_name):
-        temp = self.train_cameras[scale]
+        temp = self.train_cameras[1.0]
         with open(json_file_name) as tf:
             timesteps = json.load(tf)["timesteps"]
         self.edit_cameras = [camera for camera in temp if camera.timestep in timesteps]

@@ -238,7 +238,8 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     # if start_timestep != 0:
     #     while next(iter_timestep) != start_timestep:
     #         continue
-    nbatch = 9
+    scene.setupEditCameras("edit_timesteps.json")
+    nbatch = 18
     for iteration in range(first_iter, opt.iterations + 1):        
         
         iter_start.record()
@@ -263,10 +264,11 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
 
         if iteration % 60000 == 1:
             with torch.no_grad():
-                first_cams = scene.getEditCamerasByJsonAndBatch("edit_timesteps.json", nbatch)
+                
                 cameras = []
                 for i in range(nbatch): 
-                    edit_cams = edit_dataset(first_cams[i], guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
+                    first_cams = scene.getEditCamerasByBatch(nbatch, i)
+                    edit_cams = edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
                     cameras = cameras + edit_cams.cameras
                 edit_cameras = CameraDataset(cameras)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)

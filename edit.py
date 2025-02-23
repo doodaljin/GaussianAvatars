@@ -238,7 +238,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     #     while next(iter_timestep) != start_timestep:
     #         continue
     scene.setupEditCameras("edit_timesteps.json")
-    nbatch = 18
+    nbatch = 27
     for iteration in range(first_iter, opt.iterations + 1):        
         
         iter_start.record()

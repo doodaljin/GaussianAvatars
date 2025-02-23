@@ -171,6 +171,18 @@ class Scene:
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
     
+    def getEditedCameras(self, save_path, nbatch, round):
+        edit_cameras = self.edit_cameras 
+        edit_dataset = CameraDataset(edit_cameras)
+        len_cams = len(edit_cameras)
+        batch_size = len_cams//nbatch
+        for i in range(len(edit_cameras)):
+            save_edited_path = os.path.normpath(edit_cameras[i].image_path)
+            split_path = save_edited_path.split(os.sep)
+            save_edited_path = Path(save_path) / str(edit_round*10 + i//batch_size) / (str(edit_cameras[i].timestep) + "_" + split_path[-1])
+            edit_dataset.update_edit(i, save_edited_path)
+        return edit_dataset
+
     def getEditCameras(self, timestep, scale=1.0):
         temp = self.train_cameras[scale]
         edit_cameras = [camera for camera in temp if camera.timestep == timestep]

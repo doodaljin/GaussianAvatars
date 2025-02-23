@@ -154,10 +154,9 @@ def edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipeline, edit
         split_path = save_edited_path.split(os.sep)
         save_edited_path = Path(save_path) / (str(view.timestep) + "_" + split_path[-1])
         # view.image_edited_path = save_edited_path
-        edit_cameras.update_edit(view_index, save_edited_path)
+        # edit_cameras.update_edit(view_index, save_edited_path)
         save_image(edit_image, save_edited_path)
     print("Done editing ", edit_round, "\n")
-    return edit_cameras
 
 def find_timesteps_for_editing(scene, threshold = 0.995):
     sample_cams = scene.getSampleCameras()
@@ -265,12 +264,12 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
         if iteration % 60000 == 1:
             with torch.no_grad():
                 
-                cameras = []
+                # cameras = []
                 for i in range(nbatch): 
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
-                    edit_cams = edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
-                    cameras = cameras + edit_cams.cameras
-                edit_cameras = CameraDataset(cameras)
+                    edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
+                    # cameras = cameras + edit_cams.cameras 
+                edit_cameras = scene.getEditedCameras(dataset.edit_path, nbatch, edit_round)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
                 iter_camera_train = iter(loader_camera_train)
                 edit_round += 1

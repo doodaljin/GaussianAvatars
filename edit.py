@@ -48,7 +48,7 @@ import json
 import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
-
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 def extract_feature(image):
     img_gray = np.mean(image.detach().numpy(), axis=0) # Convert to grayscale
     hog_features = hog(img_gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), channel_axis=None) # Adjust parameters if needed
@@ -266,6 +266,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
                 
                 # cameras = []
                 for i in range(nbatch): 
+                    torch.cuda.empty_cache()
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
                     edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
                     # cameras = cameras + edit_cams.cameras 

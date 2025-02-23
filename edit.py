@@ -266,6 +266,8 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
                 
                 # cameras = []
                 for i in range(nbatch): 
+                    if iteration == first_iter:
+                        break
                     torch.cuda.empty_cache()
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
                     edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
@@ -506,7 +508,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--interval", type=int, default=30000, help="A shared iteration interval for test and saving results and checkpoints.")
+    parser.add_argument("--interval", type=int, default=60000, help="A shared iteration interval for test and saving results and checkpoints.")
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")

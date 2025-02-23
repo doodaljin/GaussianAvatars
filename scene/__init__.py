@@ -171,7 +171,7 @@ class Scene:
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
     
-    def getEditedCameras(self, save_path, nbatch, round):
+    def getEditedCameras(self, save_path, nbatch, edit_round):
         edit_cameras = self.edit_cameras 
         edit_dataset = CameraDataset(edit_cameras)
         len_cams = len(edit_cameras)

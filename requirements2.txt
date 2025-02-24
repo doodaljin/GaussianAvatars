@@ -1,6 +1,6 @@
 tqdm
 numpy==1.23.1
-flax==0.10.0
+flax
 matplotlib
 scipy
 chumpy
@@ -11,21 +11,23 @@ plyfile
 tyro
 dearpygui
 roma
+opencv-python
 git+https://github.com/NVlabs/nvdiffrast
 #git+https://github.com/facebookresearch/pytorch3d.git
 submodules/diff-gaussian-rasterization
-submodules/simple-knn
+git+https://gitlab.inria.fr/bkerbl/simple-knn.git
+# submodules/simple-knn
 lightning
-omegaconf==2.3.0
+omegaconf
 jaxtyping
 diffusers[torch]==0.19.3
 transformers
 # jax[cuda12_pip]==0.4.23 --extra-index-url https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-libigl==2.5.0
-xatlas==0.0.8
+libigl
+xatlas
 trimesh[easy]==4.0.5
-networkx==3.1
-pysdf==0.1.9
+networkx
+pysdf
 git+https://github.com/NVlabs/tiny-cuda-nn/@212104156403bd87616c1a4f73a1c5f2c2e172a9#subdirectory=bindings/torch
 ninja
 kornia

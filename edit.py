@@ -266,11 +266,9 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
                 
                 # cameras = []
                 for i in range(nbatch): 
-                    if iteration == first_iter:
-                        break
                     torch.cuda.empty_cache()
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
-                    edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*10+i, background, dataset.edit_path)
+                    edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*100+i, background, dataset.edit_path)
                     # cameras = cameras + edit_cams.cameras 
                 edit_cameras = scene.getEditedCameras(dataset.edit_path, nbatch, edit_round)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
@@ -394,7 +392,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
             if (iteration in checkpoint_iterations):
                 print("[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-            if (iteration % 10000 == 0):
+            if (iteration % 20000 == 0):
                 debug = 1
 
 

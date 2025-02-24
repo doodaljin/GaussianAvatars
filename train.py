@@ -307,47 +307,47 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     debug_path = "debug2"
     debug_counter = 0
     for iteration in range(first_iter, opt.iterations + 1):        
-        if network_gui.conn == None:
-            network_gui.try_connect()
-        while network_gui.conn != None:
-            try:
-                # receive data
-                net_image = None
-                # custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer, use_original_mesh = network_gui.receive()
-                custom_cam, msg = network_gui.receive()
+        # if network_gui.conn == None:
+        #     network_gui.try_connect()
+        # while network_gui.conn != None:
+        #     try:
+        #         # receive data
+        #         net_image = None
+        #         # custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer, use_original_mesh = network_gui.receive()
+        #         custom_cam, msg = network_gui.receive()
 
-                # render
-                if custom_cam != None:
-                    # mesh selection by timestep
-                    if gaussians.binding != None:
-                        gaussians.select_mesh_by_timestep(custom_cam.timestep, msg['use_original_mesh'])
+        #         # render
+        #         if custom_cam != None:
+        #             # mesh selection by timestep
+        #             if gaussians.binding != None:
+        #                 gaussians.select_mesh_by_timestep(custom_cam.timestep, msg['use_original_mesh'])
                     
-                    # gaussian splatting rendering
-                    if msg['show_splatting']:
-                        net_image = render(custom_cam, gaussians, pipe, background, msg['scaling_modifier'])["render"]
+        #             # gaussian splatting rendering
+        #             if msg['show_splatting']:
+        #                 net_image = render(custom_cam, gaussians, pipe, background, msg['scaling_modifier'])["render"]
                     
-                    # mesh rendering
-                    if gaussians.binding != None and msg['show_mesh']:
-                        out_dict = mesh_renderer.render_from_camera(gaussians.verts, gaussians.faces, custom_cam)
+        #             # mesh rendering
+        #             if gaussians.binding != None and msg['show_mesh']:
+        #                 out_dict = mesh_renderer.render_from_camera(gaussians.verts, gaussians.faces, custom_cam)
 
-                        rgba_mesh = out_dict['rgba'].squeeze(0).permute(2, 0, 1)  # (C, W, H)
-                        rgb_mesh = rgba_mesh[:3, :, :]
-                        alpha_mesh = rgba_mesh[3:, :, :]
+        #                 rgba_mesh = out_dict['rgba'].squeeze(0).permute(2, 0, 1)  # (C, W, H)
+        #                 rgb_mesh = rgba_mesh[:3, :, :]
+        #                 alpha_mesh = rgba_mesh[3:, :, :]
 
-                        mesh_opacity = msg['mesh_opacity']
-                        if net_image is None:
-                            net_image = rgb_mesh
-                        else:
-                            net_image = rgb_mesh * alpha_mesh * mesh_opacity  + net_image * (alpha_mesh * (1 - mesh_opacity) + (1 - alpha_mesh))
+        #                 mesh_opacity = msg['mesh_opacity']
+        #                 if net_image is None:
+        #                     net_image = rgb_mesh
+        #                 else:
+        #                     net_image = rgb_mesh * alpha_mesh * mesh_opacity  + net_image * (alpha_mesh * (1 - mesh_opacity) + (1 - alpha_mesh))
 
-                    # send data
-                    net_dict = {'num_timesteps': gaussians.num_timesteps, 'num_points': gaussians._xyz.shape[0]}
-                    network_gui.send(net_image, net_dict)
-                if msg['do_training'] and ((iteration < int(opt.iterations)) or not msg['keep_alive']):
-                    break
-            except Exception as e:
-                # print(e)
-                network_gui.conn = None
+        #             # send data
+        #             net_dict = {'num_timesteps': gaussians.num_timesteps, 'num_points': gaussians._xyz.shape[0]}
+        #             network_gui.send(net_image, net_dict)
+        #         if msg['do_training'] and ((iteration < int(opt.iterations)) or not msg['keep_alive']):
+        #             break
+        #     except Exception as e:
+        #         # print(e)
+        #         network_gui.conn = None
 
         iter_start.record()
 
@@ -468,7 +468,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-            if (iteration % 3000 == 0):
+            if (iteration % 10000 == 0):
                 debug = 1
 
 def prepare_output_and_logger(args):    
@@ -581,7 +581,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--interval", type=int, default=5000, help="A shared iteration interval for test and saving results and checkpoints.")
+    parser.add_argument("--interval", type=int, default=60000, help="A shared iteration interval for test and saving results and checkpoints.")
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")
@@ -605,7 +605,7 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    edit(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
     print("\nTraining complete.")

@@ -179,7 +179,7 @@ class Scene:
         for i in range(len(edit_cameras)):
             save_edited_path = os.path.normpath(edit_cameras[i].image_path)
             split_path = save_edited_path.split(os.sep)
-            save_edited_path = Path(save_path) / str(edit_round*100 + i//batch_size) / (str(edit_cameras[i].timestep) + "_" + split_path[-1])
+            save_edited_path = Path(save_path) / str(edit_round*1000 + i//batch_size) / (str(edit_cameras[i].timestep) + "_" + split_path[-1])
             edit_dataset.update_edit(i, save_edited_path)
         return edit_dataset
 

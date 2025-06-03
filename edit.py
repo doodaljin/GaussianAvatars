@@ -33,10 +33,10 @@ from PIL import Image
 #     TENSORBOARD_FOUND = True
 # except ImportError:
 #     TENSORBOARD_FOUND = False
-from skimage.feature import hog
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
-import numpy as np
+# from skimage.feature import hog
+# from sklearn.metrics.pairwise import cosine_similarity
+# from sklearn.preprocessing import normalize
+# import numpy as np
 from pathlib import Path
 from torchvision.utils import save_image
 from omegaconf import OmegaConf
@@ -45,91 +45,91 @@ from threestudio.models.prompt_processors.stable_diffusion_prompt_processor impo
 from threestudio.utils.perceptual import PerceptualLoss
 from threestudio.utils.misc import get_device
 import json
-import torch.nn as nn
-import torchvision.models as models
-import torchvision.transforms as transforms
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-def extract_feature(image):
-    img_gray = np.mean(image.detach().numpy(), axis=0) # Convert to grayscale
-    hog_features = hog(img_gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), channel_axis=None) # Adjust parameters if needed
-    return hog_features
+# import torch.nn as nn
+# import torchvision.models as models
+# import torchvision.transforms as transforms
 
-def extract_cnn_features(image_tensor, model, layer_name='avgpool'):
-    """
-    Extracts features from a specified layer of a pre-trained CNN.
+# def extract_feature(image):
+#     img_gray = np.mean(image.detach().numpy(), axis=0) # Convert to grayscale
+#     hog_features = hog(img_gray, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2), channel_axis=None) # Adjust parameters if needed
+#     return hog_features
 
-    Args:
-        image_tensor (torch.Tensor): A 3D image tensor (C x H x W) normalized to [0-1], RGB (C=3).
-        model (torchvision.models.ResNet): A pre-trained ResNet model.
-        layer_name (str): Name of the layer of the ResNet to extract features from. Defaults to 'avgpool'.
+# def extract_cnn_features(image_tensor, model, layer_name='avgpool'):
+#     """
+#     Extracts features from a specified layer of a pre-trained CNN.
 
-    Returns:
-        torch.Tensor: CNN feature vector.
-    """
-    if image_tensor.is_cuda:
-        image_tensor = image_tensor.cpu()
-    image_numpy = image_tensor.detach().numpy()
-    # Check if image has 3 dimensions. If not, return 0
-    if len(image_numpy.shape) != 3 or image_numpy.shape[0] != 3:
-        return torch.zeros(512, dtype=torch.float32)
+#     Args:
+#         image_tensor (torch.Tensor): A 3D image tensor (C x H x W) normalized to [0-1], RGB (C=3).
+#         model (torchvision.models.ResNet): A pre-trained ResNet model.
+#         layer_name (str): Name of the layer of the ResNet to extract features from. Defaults to 'avgpool'.
 
-    # Make sure the image is resized to 224x224 for the ResNet.
-    transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet normalization
-    ])
+#     Returns:
+#         torch.Tensor: CNN feature vector.
+#     """
+#     if image_tensor.is_cuda:
+#         image_tensor = image_tensor.cpu()
+#     image_numpy = image_tensor.detach().numpy()
+#     # Check if image has 3 dimensions. If not, return 0
+#     if len(image_numpy.shape) != 3 or image_numpy.shape[0] != 3:
+#         return torch.zeros(512, dtype=torch.float32)
 
-    image_tensor = transform(image_tensor)
-    image_tensor = image_tensor.unsqueeze(0)  # ResNet models expect batches
+#     # Make sure the image is resized to 224x224 for the ResNet.
+#     transform = transforms.Compose([
+#         transforms.ToPILImage(),
+#         transforms.Resize((224, 224)),
+#         transforms.ToTensor(),
+#         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet normalization
+#     ])
 
-    # Extract feature from the layer name specified
-    feature_vector = None
-    if layer_name == 'avgpool':  # Avgpool layer
-        with torch.no_grad():
-            feature_vector = model(image_tensor).squeeze()
-    else:  # Other layers
-        feature_extractor = nn.Sequential(*list(model.children())[:])
-        layer_features = []
+#     image_tensor = transform(image_tensor)
+#     image_tensor = image_tensor.unsqueeze(0)  # ResNet models expect batches
 
-        def hook(module, input, output):
-            layer_features.append(output.flatten(start_dim=1))
+#     # Extract feature from the layer name specified
+#     feature_vector = None
+#     if layer_name == 'avgpool':  # Avgpool layer
+#         with torch.no_grad():
+#             feature_vector = model(image_tensor).squeeze()
+#     else:  # Other layers
+#         feature_extractor = nn.Sequential(*list(model.children())[:])
+#         layer_features = []
 
-        target_layer = None
-        for name, module in feature_extractor.named_modules():
-            if name == layer_name:
-                target_layer = module
-                break
-        target_layer.register_forward_hook(hook)
-        with torch.no_grad():
-            model(image_tensor)
-            feature_vector = torch.cat(layer_features, dim=1).squeeze()
-    return feature_vector
+#         def hook(module, input, output):
+#             layer_features.append(output.flatten(start_dim=1))
 
-def calculate_similarity(feature1, feature2):
-    feature_vectors = np.array([feature1, feature2])
-    feature_vectors = normalize(feature_vectors)
-    similarity_matrix = cosine_similarity(feature_vectors)
-    return similarity_matrix[0][1]
+#         target_layer = None
+#         for name, module in feature_extractor.named_modules():
+#             if name == layer_name:
+#                 target_layer = module
+#                 break
+#         target_layer.register_forward_hook(hook)
+#         with torch.no_grad():
+#             model(image_tensor)
+#             feature_vector = torch.cat(layer_features, dim=1).squeeze()
+#     return feature_vector
 
-def calculate_similarity_sklearn(feature1, feature2):
-    """
-    Calculates cosine similarity using sklearn.
+# def calculate_similarity(feature1, feature2):
+#     feature_vectors = np.array([feature1, feature2])
+#     feature_vectors = normalize(feature_vectors)
+#     similarity_matrix = cosine_similarity(feature_vectors)
+#     return similarity_matrix[0][1]
 
-    Args:
-        feature1 (torch.Tensor): First feature vector.
-        feature2 (torch.Tensor): Second feature vector.
+# def calculate_similarity_sklearn(feature1, feature2):
+#     """
+#     Calculates cosine similarity using sklearn.
 
-    Returns:
-        float: Cosine similarity score.
-    """
-    # Convert PyTorch tensors to NumPy arrays
-    feature1_np = feature1.detach().cpu().numpy().reshape(1, -1)
-    feature2_np = feature2.detach().cpu().numpy().reshape(1, -1)
-    # Calculate cosine similarity using sklearn
-    similarity_score = cosine_similarity(feature1_np, feature2_np)[0][0]
-    return similarity_score
+#     Args:
+#         feature1 (torch.Tensor): First feature vector.
+#         feature2 (torch.Tensor): Second feature vector.
+
+#     Returns:
+#         float: Cosine similarity score.
+#     """
+#     # Convert PyTorch tensors to NumPy arrays
+#     feature1_np = feature1.detach().cpu().numpy().reshape(1, -1)
+#     feature2_np = feature2.detach().cpu().numpy().reshape(1, -1)
+#     # Calculate cosine similarity using sklearn
+#     similarity_score = cosine_similarity(feature1_np, feature2_np)[0][0]
+#     return similarity_score
 
 def edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipeline, edit_round, background, save_path):
     save_path = Path(save_path) / str(edit_round)
@@ -158,34 +158,34 @@ def edit_dataset(edit_cameras, guidance, prompt_utils, gaussians, pipeline, edit
         save_image(edit_image, save_edited_path)
     print("Done editing ", edit_round, "\n")
 
-def find_timesteps_for_editing(scene, threshold = 0.995):
-    sample_cams = scene.getSampleCameras()
-    print("Length timesteps: ", len(sample_cams))
-    features = []
-    timesteps = []
-    d_timesteps = []
-    resnet_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    resnet_model.eval()
-    for i in tqdm(range(len(sample_cams)), desc = "Calculating cnn features"):
-        temp_feature = extract_cnn_features(sample_cams[i].original_image, resnet_model)
-        features.append(temp_feature)
-    for i in tqdm(range(len(sample_cams)), desc = "Filtering timesteps"):
-        if i in d_timesteps:
-            continue
-        # print("Timesteps similar to ", i, ": ")
-        cur_feature = features[i]
-        timesteps.append(i)
-        for j in range(i + 1, len(sample_cams)):
-            cam = sample_cams[j]
-            assert j == cam.timestep, "timestep is wrong"
-            temp_feature = features[j]
-            sim = calculate_similarity_sklearn(cur_feature, temp_feature)
-            # print(j, " ", sim)
-            if sim >= threshold:
-                d_timesteps.append(j)
+# def find_timesteps_for_editing(scene, threshold = 0.995):
+    # sample_cams = scene.getSampleCameras()
+    # print("Length timesteps: ", len(sample_cams))
+    # features = []
+    # timesteps = []
+    # d_timesteps = []
+    # resnet_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+    # resnet_model.eval()
+    # for i in tqdm(range(len(sample_cams)), desc = "Calculating cnn features"):
+    #     temp_feature = extract_cnn_features(sample_cams[i].original_image, resnet_model)
+    #     features.append(temp_feature)
+    # for i in tqdm(range(len(sample_cams)), desc = "Filtering timesteps"):
+    #     if i in d_timesteps:
+    #         continue
+    #     # print("Timesteps similar to ", i, ": ")
+    #     cur_feature = features[i]
+    #     timesteps.append(i)
+    #     for j in range(i + 1, len(sample_cams)):
+    #         cam = sample_cams[j]
+    #         assert j == cam.timestep, "timestep is wrong"
+    #         temp_feature = features[j]
+    #         sim = calculate_similarity_sklearn(cur_feature, temp_feature)
+    #         # print(j, " ", sim)
+    #         if sim >= threshold:
+    #             d_timesteps.append(j)
     
-    with open('edit_timesteps.json', 'w', encoding='utf-8') as f:
-        json.dump({"timesteps": timesteps}, f, ensure_ascii = False)
+    # with open('edit_timesteps.json', 'w', encoding='utf-8') as f:
+    #     json.dump({"timesteps": timesteps}, f, ensure_ascii = False)
 
 
 def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from): 
@@ -238,7 +238,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     #     while next(iter_timestep) != start_timestep:
     #         continue
     scene.setupEditCameras("edit_timesteps.json")
-    nbatch = 27
+    nbatch = 21
     for iteration in range(first_iter, opt.iterations + 1):        
         
         iter_start.record()
@@ -261,14 +261,14 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
         #         loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=False)
         #         iter_camera_train = iter(loader_camera_train)
 
-        if iteration % 60000 == 1:
+        if iteration % 10000 == 1:
             with torch.no_grad():
                 
                 # cameras = []
                 for i in range(nbatch): 
-                    torch.cuda.empty_cache()
+                    # torch.cuda.empty_cache()
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
-                    edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*100+i, background, dataset.edit_path)
+                    edit_dataset(first_cams, guidance, prompt_utils, gaussians, pipe, edit_round*1000+i, background, dataset.edit_path)
                     # cameras = cameras + edit_cams.cameras 
                 edit_cameras = scene.getEditedCameras(dataset.edit_path, nbatch, edit_round)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
@@ -377,7 +377,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
             gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
             gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-            if iteration % opt.densification_interval == 0:
+            if iteration % opt.edit_densification_interval == 0:
                 size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                 gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                 

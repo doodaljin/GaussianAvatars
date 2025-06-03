@@ -94,7 +94,7 @@ class OptimizationParams(ParamGroup):
         self.densify_grad_threshold = 0.0002
         self.edit_iterations = 5000
         self.edit_densification_interval = 100
-        self.edit_opacity_reset_interval = 5000
+        self.edit_opacity_reset_interval = 3000
         
         # GaussianAvatars
         self.flame_expr_lr = 1e-3

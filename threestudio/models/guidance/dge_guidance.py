@@ -41,7 +41,7 @@ class DGEGuidance(BaseObject):
         max_step_percent: float = 0.98
         diffusion_steps: int = 20
         use_sds: bool = False
-        camera_batch_size: int = 3
+        camera_batch_size: int = 9
 
     cfg: Config
 

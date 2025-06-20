@@ -199,7 +199,10 @@ class Scene:
         temp = self.train_cameras[1.0]
         with open(json_file_name) as tf:
             timesteps = json.load(tf)["timesteps"]
-        self.edit_cameras = [camera for camera in temp if camera.timestep in timesteps]
+        self.edit_cameras = sorted(
+            [camera for camera in temp if camera.timestep in timesteps],
+            key=lambda camera: camera.timestep
+        )
 
     def getEditCamerasContByTimestep(self, timestep, save_path, scale=1.0):
         temp = self.train_cameras[scale]

@@ -23,7 +23,7 @@ from utils.general_utils import safe_state
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr, error_map
-from lpipsPyTorch import lpips
+from lpipsPyTorch import lpips as lps
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 from utils.general_utils import PILtoTorch
@@ -42,13 +42,16 @@ from transformers import logging
 import numpy as np
 from PIL import ImageDraw
 from torchvision.transforms.functional import to_pil_image
+import cv2
 logging.set_verbosity_error()
 
 def get_pil_mask(image_pil):
     """
     Generate a PIL mask for the eyes and mouth of the human face in the PIL image.
     The mask covers left eye, right eye, and mouth regions, combined into a single mask.
+    Uses OpenCV for anti-aliased polygon drawing (cv2.LINE_AA).
     """
+
     # Detect face and landmarks
     dets = detector(np.array(image_pil), 1)
     if len(dets) == 0:
@@ -61,30 +64,39 @@ def get_pil_mask(image_pil):
     # Indices for left eye, right eye, and mouth in dlib's 68-point model
     left_eye_idx = list(range(36, 42))
     right_eye_idx = list(range(42, 48))
-    mouth_idx = list(range(48, 68))
+    mouth_idx = list(range(48, 60))
 
-    mask = Image.new("L", image_pil.size, 0)
-    draw = ImageDraw.Draw(mask)
+    w, h = image_pil.size
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    # Helper to draw anti-aliased polygon using polylines and fillPoly
+    def draw_aa_polygon(img, pts):
+        pts = np.array(pts, dtype=np.int32)
+        cv2.fillPoly(img, [pts], 255)
+        cv2.polylines(img, [pts], isClosed=True, color=255, thickness=2, lineType=cv2.LINE_AA)
 
     # Draw left eye
     left_eye_pts = [tuple(landmarks[i]) for i in left_eye_idx]
-    draw.polygon(left_eye_pts, fill=255)
+    draw_aa_polygon(mask, left_eye_pts)
 
     # Draw right eye
     right_eye_pts = [tuple(landmarks[i]) for i in right_eye_idx]
-    draw.polygon(right_eye_pts, fill=255)
+    draw_aa_polygon(mask, right_eye_pts)
 
     # Draw mouth
     mouth_pts = [tuple(landmarks[i]) for i in mouth_idx]
-    draw.polygon(mouth_pts, fill=255)
+    draw_aa_polygon(mask, mouth_pts)
 
     # Invert the mask
-    inverted_mask = Image.eval(mask, lambda x: 255 - x)
-    return inverted_mask
+    mask = 255 - mask
+
+    # Convert to PIL Image
+    pil_mask = Image.fromarray(mask, mode="L")
+    return pil_mask
 
 
 def inference(pipeline, image_pil, instruction, 
-              image_guidance_scale, text_guidance_scale, seed, blending_range, num_timesteps):
+              image_guidance_scale, text_guidance_scale, seed, blending_range, num_timesteps, debug=False):
     external_mask_pil = get_pil_mask(image_pil)
     inv_results = pipeline.invert(instruction, image_pil, num_inference_steps=num_timesteps, inv_range=blending_range)
 
@@ -92,12 +104,15 @@ def inference(pipeline, image_pil, instruction,
     edited_image = pipeline(instruction, src_mask=external_mask_pil, image=image_pil,
                             guidance_scale=text_guidance_scale, image_guidance_scale=image_guidance_scale,
                             num_inference_steps=num_timesteps, generator=generator).images[0]
+    if debug:
+        external_mask_pil.save("external_mask.png")
     return edited_image
 
 def edit_dataset(edit_cameras, pipe, prompt, gaussians, pipeline, edit_round, background, save_path, seed=None):
     save_path = Path(save_path) / str(edit_round)
     os.makedirs(save_path, exist_ok = True)
     for i in tqdm(range(len(edit_cameras)), desc="Editing progress"):
+        debug = True if i % 10 == 0 else False
         view = edit_cameras[i]
         if gaussians.binding != None:
             gaussians.select_mesh_by_timestep(view.timestep)
@@ -108,7 +123,7 @@ def edit_dataset(edit_cameras, pipe, prompt, gaussians, pipeline, edit_round, ba
         rendering_pil = to_pil_image(rendering_clamped)
         edit_image = inference(pipe, rendering_pil, prompt, image_guidance_scale=1.5, 
                                text_guidance_scale=7.5, seed=seed, 
-                               blending_range=[100, 1], num_timesteps=100)
+                               blending_range=[100, 1], num_timesteps=100, debug=debug)
         save_edited_path = os.path.normpath(view.image_path)
         split_path = save_edited_path.split(os.sep)
         save_edited_path = Path(save_path) / (str(view.timestep) + "_" + split_path[-1])
@@ -149,10 +164,12 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     edit_round = 0
-    perceptual_loss = lpips.LPIPS(net='alex')
+    perceptual_loss = lpips.LPIPS(net='alex').cuda()
     scene.setupEditCameras("edit_timesteps.json")
     nbatch = 21
     seed = randint(0, 1000000)
+    print("Seed: ", seed)
+    continue_training = 0
     for iteration in range(first_iter, opt.iterations + 1):        
         
         iter_start.record()
@@ -163,12 +180,14 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        if iteration % 10000 == 1:
+        if iteration % 30000 == 1:
             with torch.no_grad():
                 
                 # cameras = []
                 for i in range(nbatch): 
                     # torch.cuda.empty_cache()
+                    if continue_training == 1:
+                        break
                     first_cams = scene.getEditCamerasByBatch(nbatch, i)
                     edit_dataset(first_cams, pipeline, dataset.prompt, gaussians, pipe, edit_round*1000+i, background, dataset.edit_path, seed=seed)
                     # cameras = cameras + edit_cams.cameras 
@@ -176,6 +195,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
                 iter_camera_train = iter(loader_camera_train)
                 edit_round += 1
+                continue_training = 0
 
         try:
             viewpoint_cam = next(iter_camera_train)
@@ -199,14 +219,6 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
         # edit_image = edit_result["edit_images"].detach().clone().squeeze(0).permute(2, 0, 1)
         # gt_image = edit_image.cuda()
         # gt_image = get_edited_image(viewpoint_cam, edit_round, dataset.edit_path).cuda()
-
-        if debug == 1: 
-            temp_debug_path = os.path.join(debug_path, str(debug_counter))
-            os.makedirs(temp_debug_path, exist_ok = True)
-            save_image(image, os.path.join(temp_debug_path, "render_image.png"))
-            save_image(gt_image, os.path.join(temp_debug_path, "gt_image.png"))
-            debug = 0
-            debug_counter += 1
         
         
         losses = {}
@@ -378,7 +390,7 @@ def training_report(tb_writer, iteration, losses, elapsed, testing_iterations, s
                     if idx == len(config['cameras']) - 1 or len(image_cache) == 16:
                         batch_img = torch.stack(image_cache, dim=0)
                         batch_gt_img = torch.stack(gt_image_cache, dim=0)
-                        lpips_test += lpips(batch_img, batch_gt_img).sum().double()
+                        lpips_test += lps(batch_img, batch_gt_img).sum().double()
                         image_cache = []
                         gt_image_cache = []
 

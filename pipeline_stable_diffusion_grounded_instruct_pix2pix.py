@@ -151,12 +151,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+        print(f"Scheduler class: {self.scheduler.__class__.__name__}")
 
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        cond_image: Union[torch.FloatTensor, PIL.Image.Image] = None, 
         src_mask: Union[torch.FloatTensor, PIL.Image.Image] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.5,
@@ -294,6 +296,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
         # 3. Preprocess image
         image = preprocess(image)
+        cond_image = preprocess(cond_image)
         height, width = image.shape[-2:]
 
         # 4. set timesteps
@@ -301,8 +304,18 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare Image latents
-        image_latents = self.prepare_image_latents(
-            image,
+        # image_latents = self.prepare_image_latents(
+        #     image,
+        #     batch_size,
+        #     num_images_per_prompt,
+        #     prompt_embeds.dtype,
+        #     device,
+        #     do_classifier_free_guidance,
+        #     generator,
+        # )
+
+        cond_image_latents = self.prepare_image_latents(
+            cond_image,
             batch_size,
             num_images_per_prompt,
             prompt_embeds.dtype,
@@ -312,9 +325,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         )
         
         src_mask = np.array(src_mask.convert("L")) / 255.0
-        src_mask = torch.from_numpy(src_mask[None, None, :, :]).type(image_latents.dtype).to(device)
+        src_mask = torch.from_numpy(src_mask[None, None, :, :]).type(cond_image_latents.dtype).to(device)
         # src_mask = torch.tensor(src_mask[None, None, :, :], dtype=image_latents.dtype).to(device)
-        src_mask = torch.nn.functional.interpolate(src_mask, size=image_latents.shape[-2:], 
+        src_mask = torch.nn.functional.interpolate(src_mask, size=cond_image_latents.shape[-2:], 
                                                    mode='bilinear', align_corners=False)
 
 
@@ -332,7 +345,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         )
 
         # 7. Check that shapes of latents and image match the UNet channels
-        num_channels_image = image_latents.shape[1]
+        num_channels_image = cond_image_latents.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
             raise ValueError(
                 f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
@@ -356,7 +369,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
+                scaled_latent_model_input = torch.cat([scaled_latent_model_input, cond_image_latents], dim=1)
 
                 # predict the noise residual
                 noise_pred = self.unet(scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds).sample

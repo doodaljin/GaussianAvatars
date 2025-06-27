@@ -1,3 +1,3 @@
 from . import (
-    instructpix2pix_guidance,
+    dge_guidance,
 )

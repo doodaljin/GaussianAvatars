@@ -95,13 +95,13 @@ def get_pil_mask(image_pil):
     return pil_mask
 
 
-def inference(pipeline, image_pil, instruction, 
+def inference(pipeline, image_pil, cond_image_pil, prompt, 
               image_guidance_scale, text_guidance_scale, seed, blending_range, num_timesteps, debug=False):
-    external_mask_pil = get_pil_mask(image_pil)
-    inv_results = pipeline.invert(instruction, image_pil, num_inference_steps=num_timesteps, inv_range=blending_range)
+    external_mask_pil = get_pil_mask(cond_image_pil)
+    inv_results = pipeline.invert(prompt, cond_image_pil, num_inference_steps=num_timesteps, inv_range=blending_range)
 
     generator = torch.Generator("cuda").manual_seed(seed) if seed is not None else torch.Generator("cuda")
-    edited_image = pipeline(instruction, src_mask=external_mask_pil, image=image_pil,
+    edited_image = pipeline(prompt=prompt, src_mask=external_mask_pil, image=image_pil,
                             guidance_scale=text_guidance_scale, image_guidance_scale=image_guidance_scale,
                             num_inference_steps=num_timesteps, generator=generator).images[0]
     if debug:
@@ -121,7 +121,7 @@ def edit_dataset(edit_cameras, pipe, prompt, gaussians, pipeline, edit_round, ba
         # Convert rendering tensor (C, H, W) to PIL Image using torchvision
         rendering_clamped = torch.clamp(rendering.detach().cpu(), 0.0, 1.0)
         rendering_pil = to_pil_image(rendering_clamped)
-        edit_image = inference(pipe, rendering_pil, prompt, image_guidance_scale=1.5, 
+        edit_image = inference(pipeline=pipe, image_pil=rendering_pil, cond_image_pil=view.original_image, prompt=prompt, image_guidance_scale=1.5, 
                                text_guidance_scale=7.5, seed=seed, 
                                blending_range=[100, 1], num_timesteps=100, debug=debug)
         save_edited_path = os.path.normpath(view.image_path)

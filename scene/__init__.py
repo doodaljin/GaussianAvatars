@@ -182,11 +182,23 @@ class Scene:
             save_edited_path = Path(save_path) / str(edit_round*1000 + i//batch_size) / (str(edit_cameras[i].timestep) + "_" + split_path[-1])
             edit_dataset.update_edit(i, save_edited_path)
         return edit_dataset
+    
+    def getEditedCamerasByTimestep(self, save_path, edit_round):
+        edit_cameras = self.edit_cameras
+        edit_dataset = CameraDataset(edit_cameras)
+        for i, cam in enumerate(edit_cameras):
+            save_edited_path = os.path.normpath(cam.image_path)
+            split_path = save_edited_path.split(os.sep)
+            save_edited_path = Path(save_path) / str(edit_round) / (str(cam.timestep) + "_" + split_path[-1])
+            edit_dataset.update_edit(i, save_edited_path)
 
-    def getEditCameras(self, timestep, scale=1.0):
-        temp = self.train_cameras[scale]
-        edit_cameras = [camera for camera in temp if camera.timestep == timestep]
-        return CameraDataset(edit_cameras)
+    def getEditCamerasByTimestep(self):
+        edit_cameras = self.edit_cameras
+        res = []
+        for timestep in self.timesteps:
+            batch = [camera for camera in edit_cameras if camera.timestep == timestep]
+            res.append(CameraDataset(batch))
+        return res
 
     def getEditCamerasByBatch(self, nbatch, batch_id):
         edit_cameras = self.edit_cameras
@@ -199,6 +211,7 @@ class Scene:
         temp = self.train_cameras[1.0]
         with open(json_file_name) as tf:
             timesteps = json.load(tf)["timesteps"]
+        self.timesteps = timesteps
         self.edit_cameras = sorted(
             [camera for camera in temp if camera.timestep in timesteps],
             key=lambda camera: camera.timestep

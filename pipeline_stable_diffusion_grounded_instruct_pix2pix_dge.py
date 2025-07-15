@@ -439,16 +439,16 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
                         epipolar_constrains[H * W] = torch.stack(epipolar_constrains[H * W], dim=0)
                     register_epipolar_constrains(self.unet, epipolar_constrains)
 
-                    batch_model_input = torch.cat([latents[b:b + camera_batch_size]] * 3)
+                    batch_latent_input = torch.cat([latents[b:b + camera_batch_size]] * 3)
                     batch_text_embeddings = torch.cat([positive_text_embedding[b:b + camera_batch_size], negative_text_embedding[b:b + camera_batch_size], negative_text_embedding[b:b + camera_batch_size]], dim=0)
                     batch_image_cond_latents = torch.cat([split_image_cond_latents[b:b + camera_batch_size], split_image_cond_latents[b:b + camera_batch_size], zero_image_cond_latents[b:b + camera_batch_size]], dim=0)
-                    batch_model_input = torch.cat([batch_model_input, batch_image_cond_latents], dim=1)
+                    batch_model_input = torch.cat([batch_latent_input, batch_image_cond_latents], dim=1)
 
                     batch_noise_pred = self.forward_unet(batch_model_input, t, encoder_hidden_states=batch_text_embeddings)
                     if scheduler_is_in_sigma_space:
                         step_index = (self.scheduler.timesteps == t).nonzero().item()
                         sigma = self.scheduler.sigmas[step_index]
-                        batch_noise_pred = batch_model_input - sigma * batch_noise_pred
+                        batch_noise_pred = batch_latent_input - sigma * batch_noise_pred
                     batch_noise_pred_text, batch_noise_pred_image, batch_noise_pred_uncond = batch_noise_pred.chunk(3)
                     noise_pred_text.append(batch_noise_pred_text)
                     noise_pred_image.append(batch_noise_pred_image)

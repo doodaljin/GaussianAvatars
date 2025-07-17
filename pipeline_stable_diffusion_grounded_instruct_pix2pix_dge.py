@@ -38,6 +38,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from difffusers import DDIMInverseScheduler
 
 from utils.dge_utils import register_pivotal, register_batch_idx, register_cams, register_epipolar_constrains, register_extended_attention, register_normal_attention, register_extended_attention, make_dge_block, isinstance_str, compute_epipolar_constrains, register_normal_attn_flag
 
@@ -160,6 +161,7 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
                     module.use_ada_layer_norm = False
                     module.use_ada_layer_norm_zero = False
         register_extended_attention(self)
+        self.inverse_scheduler = DDIMInverseScheduler.from_config(self.scheduler.config, set_alpha_to_zero=False)
 
     def use_normal_unet(self):
         # print("use normal unet")
@@ -354,14 +356,15 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
             do_classifier_free_guidance,
             generator,
         )
+        print(f"cond_image_latents shape: {cond_image_latents.shape}")
         
-        # if isinstance(src_mask, torch.Tensor):
-        #     src_mask = src_mask.type(cond_image_latents.dtype).to(device)
-        # else:
-        #     raise ValueError("`src_mask` must be a torch.Tensor.")
-        # # src_mask = torch.tensor(src_mask[None, None, :, :], dtype=image_latents.dtype).to(device)
-        # src_mask = torch.nn.functional.interpolate(src_mask, size=cond_image_latents.shape[-2:], 
-        #                                            mode='bilinear', align_corners=False)
+        if isinstance(src_mask, torch.Tensor):
+            src_mask = src_mask.type(cond_image_latents.dtype).to(device)
+        else:
+            raise ValueError("`src_mask` must be a torch.Tensor.")
+        # src_mask = torch.tensor(src_mask[None, None, :, :], dtype=image_latents.dtype).to(device)
+        src_mask = F.interpolate(src_mask, size=cond_image_latents.shape[-2:], 
+                                                   mode='bilinear', align_corners=False)
 
 
         # 6. Prepare latent variables
@@ -377,6 +380,9 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
             latents,
         )
 
+        self.invert(num_inference_steps=num_inference_steps, latents=cond_image_latents.chunk(3)[0].clone(), 
+                    prompt_embeds=prompt_embeds.chunk(3)[0].clone(), inv_range=[1000, 1])
+        inv_latents = self.inv_latents[:]
         # 7. Check that shapes of latents and image match the UNet channels
         num_channels_image = cond_image_latents.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
@@ -471,6 +477,11 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
 
                         # get previous sample, continue loop
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                if hasattr(self, "inv_latents"):
+                    if self.inv_range[1] <= t <= self.inv_range[0]:
+                        if len(inv_latents) > 0:
+                            latents = latents * src_mask + inv_latents.pop() * (1 - src_mask)
         edit_images = self.decode_latents(latents)
         print(f"edit_images shape: {edit_images.shape}")
         edit_images = F.interpolate(edit_images, (h, w), mode="bilinear")
@@ -917,12 +928,12 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
         """
         self.inv_range = inv_range
         # 1. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        # if prompt is not None and isinstance(prompt, str):
+        #     batch_size = 1
+        # elif prompt is not None and isinstance(prompt, list):
+        #     batch_size = len(prompt)
+        # else:
+        #     batch_size = prompt_embeds.shape[0]
         if cross_attention_kwargs is None:
             cross_attention_kwargs = {}
 
@@ -933,29 +944,29 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Preprocess image
-        image = preprocess(image)
-        bs, h, w, _ = image.shape
+        # image = preprocess(image)
+        # bs, h, w, _ = image.shape
 
         # 5. Encode input prompt
-        num_images_per_prompt = 1
-        prompt_embeds = self._encode_prompt(
-            prompt,
-            device,
-            bs,
-            do_classifier_free_guidance,
-            prompt_embeds=prompt_embeds,
-        )
+        # num_images_per_prompt = 1
+        # prompt_embeds = self._encode_prompt(
+        #     prompt,
+        #     device,
+        #     bs,
+        #     do_classifier_free_guidance,
+        #     prompt_embeds=prompt_embeds,
+        # )
 
         # 4. Prepare latent variables
-        latents = self.prepare_image_latents(
-            image,
-            batch_size,
-            num_images_per_prompt,
-            prompt_embeds.dtype,
-            device,
-            do_classifier_free_guidance,
-            generator,
-        )
+        # latents = self.prepare_image_latents(
+        #     image,
+        #     batch_size,
+        #     num_images_per_prompt,
+        #     prompt_embeds.dtype,
+        #     device,
+        #     do_classifier_free_guidance,
+        #     generator,
+        # )
         image_latents = latents.clone()
         latents = self.vae.config.scaling_factor * latents
         # image_latents = torch.zeros_like(latents)
@@ -976,15 +987,15 @@ class StableDiffusionInstructPix2PixDGEPipeline(DiffusionPipeline, TextualInvers
         for i, t in enumerate(timesteps[:-1]):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
+            # latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
             latent_model_input = torch.cat([latent_model_input, image_latents], dim=1)
 
             # predict the noise residual
-            noise_pred = self.unet(
+            noise_pred = self.forward_unet(
                 latent_model_input,
                 t,
                 encoder_hidden_states=prompt_embeds,
-            ).sample
+            )
 
             # perform guidance
             if do_classifier_free_guidance:

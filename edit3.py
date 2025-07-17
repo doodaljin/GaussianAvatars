@@ -45,7 +45,7 @@ from torchvision.transforms.functional import to_pil_image
 import cv2
 logging.set_verbosity_error()
 
-def get_pil_mask(image_pil):
+def get_mask(image):
     """
     Generate a PIL mask for the eyes and mouth of the human face in the PIL image.
     The mask covers left eye, right eye, and mouth regions, combined into a single mask.
@@ -53,6 +53,7 @@ def get_pil_mask(image_pil):
     """
 
     # Detect face and landmarks
+    image_pil = image if isinstance(image, Image.Image) else to_pil_image(image.cpu())
     dets = detector(np.array(image_pil), 1)
     if len(dets) == 0:
         # No face detected, return blank mask
@@ -90,41 +91,46 @@ def get_pil_mask(image_pil):
     # Invert the mask
     mask = 255 - mask
 
-    # Convert to PIL Image
-    pil_mask = Image.fromarray(mask, mode="L")
-    return pil_mask
+    # Convert to Tensor
+    mask = mask.astype(np.float32) / 255.0  # Normalize to [0, 1]
+    mask = torch.from_numpy(mask).unsqueeze(0)  # Add channel dimension
+    return mask
 
 
-def inference(edit_cameras, pipeline, images, cond_images, prompt, 
-              image_guidance_scale, text_guidance_scale, seed, blending_range, num_timesteps, debug=False):
-    # external_mask_pil = get_pil_mask(cond_image_pil)
-    # inv_results = pipeline.invert(prompt, cond_image_pil, num_inference_steps=num_timesteps, inv_range=blending_range)
+# def inference(edit_cameras, pipeline, images, cond_images, prompt, 
+#               image_guidance_scale, text_guidance_scale, seed, blending_range, num_timesteps, debug=False):
+#     # external_mask_pil = get_pil_mask(cond_image_pil)
+#     # inv_results = pipeline.invert(prompt, cond_image_pil, num_inference_steps=num_timesteps, inv_range=blending_range)
 
-    generator = torch.Generator("cuda").manual_seed(seed) if seed is not None else torch.Generator("cuda")
-    edited_images = pipeline(prompt=prompt, image=images, cond_image=cond_images,
-                            guidance_scale=text_guidance_scale, image_guidance_scale=image_guidance_scale,
-                            num_inference_steps=num_timesteps, generator=generator, cams=edit_cameras,)
-    return edited_images
+#     generator = torch.Generator("cuda").manual_seed(seed) if seed is not None else torch.Generator("cuda")
+#     edited_images = pipeline(prompt=prompt, image=images, cond_image=cond_images,
+#                             guidance_scale=text_guidance_scale, image_guidance_scale=image_guidance_scale,
+#                             num_inference_steps=num_timesteps, generator=generator, cams=edit_cameras,)
+#     return edited_images
 
-def edit_dataset(edit_cameras, pipe, prompt, gaussians, pipeline, edit_round, background, save_path, seed=None):
+def edit_dataset(edit_cameras, pipe, prompt, gaussians, pipeline, edit_round, background, save_path, seed=None, num_timesteps=100):
     save_path = Path(save_path) / str(edit_round)
     os.makedirs(save_path, exist_ok = True)
     images = []
     original_frames = []
+    masks = []
     for i in range(len(edit_cameras)):
         view = edit_cameras[i]
         if gaussians.binding != None:
             gaussians.select_mesh_by_timestep(view.timestep)
         rendering = render(view, gaussians, pipeline, background)["render"]
         gt_image = view.original_image.cuda()
+        mask = get_mask(gt_image)
         original_frames.append(gt_image.unsqueeze(0))
         images.append(rendering.unsqueeze(0))
+        masks.append(mask.unsqueeze(0))
     images = torch.cat(images, dim=0)
     original_frames = torch.cat(original_frames, dim=0)
-    edited_images = inference(edit_cameras=edit_cameras, pipeline=pipe, images=images, 
-                              cond_images=original_frames, prompt=prompt, image_guidance_scale=1.5, 
-                              text_guidance_scale=7.5, seed=seed, 
-                               blending_range=[20, 1], num_timesteps=5, debug=False)
+    masks = torch.cat(masks, dim=0)
+    generator = torch.Generator("cuda").manual_seed(seed) if seed is not None else torch.Generator("cuda")
+    edited_images = pipe(prompt=prompt, image=images, cond_images=original_frames, 
+                         src_mask=masks, image_guidance_scale=1.5, guidance_scale=7.5,
+                         generator=generator, num_inference_steps=num_timesteps, cams=edit_cameras)
     for view_index in range(len(edit_cameras)):
         view = edit_cameras[view_index]
         edit_image = edited_images[view_index].detach().clone().permute(2, 0, 1)
@@ -142,10 +148,10 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
     pipeline = StableDiffusionInstructPix2PixDGEPipeline.from_pretrained("timbrooks/instruct-pix2pix",
                                                                   torch_dtype=torch.float16,
                                                                   safety_checker=None).to("cuda")
-    pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config, set_alpha_to_zero=False)
+    # pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config, set_alpha_to_zero=False)
     num_timesteps = 100
-    pipeline.scheduler.set_timesteps(num_timesteps)
-    pipeline.inverse_scheduler.set_timesteps(num_timesteps)
+    # pipeline.scheduler.set_timesteps(num_timesteps)
+    # pipeline.inverse_scheduler.set_timesteps(num_timesteps)
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     if dataset.bind_to_mesh:
@@ -191,7 +197,7 @@ def edit(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_i
                 for batch in batches:
                     edit_dataset(edit_cameras=batch, pipe=pipeline, prompt=dataset.prompt, gaussians=gaussians, 
                                 pipeline=pipe, edit_round = edit_round, background=background, 
-                                save_path=dataset.edit_path, seed=seed)
+                                save_path=dataset.edit_path, seed=seed, num_timesteps=num_timesteps)
                     # cameras = cameras + edit_cams.cameras 
                 edit_cameras = scene.getEditedCamerasByTimestep(dataset.edit_path, edit_round)
                 loader_camera_train = DataLoader(edit_cameras, batch_size=None, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
